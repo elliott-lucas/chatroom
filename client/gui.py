@@ -23,6 +23,7 @@ class Interface():
 		
 	def onClose(self):
 		if messagebox.askokcancel("Exit App", "Exit?") == True:
+			self.app.handler.currentServer.disconnect()
 			self.root.destroy()
 			
 	def generateInterface(self):

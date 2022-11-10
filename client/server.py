@@ -56,7 +56,7 @@ class Server():
 			for key, i in self.clients.items():
 				self.app.ui.removeClientFrame(i.clientFrame, len(self.clients)-1)
 		self.clients = {}
-		self.app.handler.currentServer.button.configure(state='disabled')
+		self.button.button['state'] = 'disabled'
 		self.app.handler.changeServer(-1)
 		
 	def handshake(self):
