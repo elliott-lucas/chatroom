@@ -3,90 +3,88 @@ from server import Server
 from gui import *
 
 class ServerHandler():
-    def __init__(self, appMain):
-        self.appMain                  = appMain
-        self.handlerServerList        = []
-        self.handlerServerNum         = 0
-        self.handlerCurrentServer     = None
-        self.handlerIsFirstRun        = True
-
-    def LoadServers(self):
-            open("servers.txt", "a").close()
-            f = open("servers.txt", "r")
-            servers = f.read().split("\n")[:-1]
-            for i in servers:
-                ip, port = i.split(":")
-                self.AddServer(ip, port)
-            f.close()
-
-    def SaveServers(self):
-            f = open("servers.txt", "w")
-            for i in self.handlerServerList:
-                data = "%s:%s\n" % (i.serverIP, i.serverPort)
-                f.write(data)
-            f.close() 
-
-    def CheckAddress(self, ip, port):
-        numDots = 0
-        if ip != "localhost":
-            for i in range(len(ip)):
-                if ip[i] not in [".", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
-                    return "Not an IP Address!"
-                if ip[i] == ".":
-                    numDots += 1
-            if numDots != 3:
-                return "Bad IP!"
-            for i in ip.split("."):
-                if i == "":
-                    return "Bad IP!"
-                elif int(i) > 255:
-                    return "Bad IP!"
-        if port.isdigit() == False and port > 0 and port < 255:
-            return "Bad Port!"
-        else:
-            return True
-        
-        
-    def ChangeServer(self, serverNum):
-        print("Changing Server")
-        self.appMain.appUI.Clear(["Input", "Output"])
-        self.appMain.appUI.SendButton.configure(state='disabled')
-        self.appMain.appUI.ChatboxInput.configure(state='disabled')
-        if self.handlerIsFirstRun == False:
-            self.appMain.appUI.Clear(["Clients"])
-            self.handlerCurrentServer.serverIsCurrentServer = False
-        else:
-            self.handlerIsFirstRun = False
-
-        self.handlerCurrentServer = self.handlerServerList[serverNum]
-        self.handlerCurrentServer.serverIsCurrentServer = True
-
-        if self.handlerCurrentServer.serverIsOnline == True:
-            for key, client in self.handlerCurrentServer.serverClients.items():
-                client.clientFrame = self.appMain.appUI.CreateClientFrame(client, len(self.handlerCurrentServer.serverClients))
-            for message in self.handlerCurrentServer.serverMessageLog:
-                self.appMain.appUI.DisplayMessage(message,
-                                                  self.handlerCurrentServer.serverClients[message.messageSender].clientName)
-            self.appMain.appUI.ServerNameLabel.configure(text=self.handlerCurrentServer.serverName)
-            self.appMain.appUI.ChatboxInput.configure(state='normal')
-            self.appMain.appUI.SendButton.configure(state='normal')
-        
-    def AddServer(self, IP, Port):
-        check = self.CheckAddress(IP, Port)
-        if check == True:
-            newServer = Server(IP, int(Port), self.handlerServerNum, self.appMain)
-            if newServer not in self.handlerServerList:
-                try:
-                    newServer.serverButton = self.appMain.appUI.CreateServerButton(newServer.serverNum,
-                                                                                   "Connecting...")
-                    self.handlerServerList.append(newServer)
-                    self.handlerServerNum += 1
-                    Thread(target=newServer.Connect, daemon=True).start()
-                except:
-                    print("Error")
-            else:
-                self.appMain.appUI.DisplayError("Error", "Server Already Added!")
-        else:
-            self.appMain.appUI.DisplayError("Error", check)
-    def RemoveServer(self, serverNum):
-        self.handlerServerList.replace(self.handlerServerList[serverNum], None)
+	def __init__(self, app):
+		self.app           = app
+		self.servers       = []
+		self.count         = 0
+		self.currentServer = None
+		self.isFirstRun    = True
+		
+	def loadServers(self):
+		open("servers.txt", "a").close()
+		f = open("servers.txt", "r")
+		servers = f.read().split("\n")[:-1]
+		for i in servers:
+			ip, port = i.split(":")
+			self.addServer(ip, port)
+		f.close()
+		
+	def saveServers(self):
+		f = open("servers.txt", "w")
+		for i in self.servers:
+			data = "%s:%s\n" % (i.ip, i.port)
+			f.write(data)
+		f.close()
+		
+	def checkAddress(self, ip, port):
+		numDots = 0
+		if ip != "localhost":
+			for i in range(len(ip)):
+				if ip[i] not in [".", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]:
+					return "Not an IP Address!"
+				if ip[i] == ".":
+					numDots += 1
+			if numDots != 3:
+				return "Bad IP!"
+			for i in ip.split("."):
+				if i == "":
+					return "Bad IP!"
+				elif int(i) > 255:
+					return "Bad IP!"
+		if port.isdigit() and int(port) > 255:
+			return True
+		else:
+			return "Bad Port!"
+			
+	def changeServer(self, num):
+		print("Changing Server")
+		self.app.ui.clear(["Input", "Output"])
+		self.app.ui.sendButton.configure(state='disabled')
+		self.app.ui.chatboxInput.configure(state='disabled')
+		if self.isFirstRun == False:
+			self.app.ui.clear(["Clients"])
+			self.currentServer.isCurrentServer = False
+		else:
+			self.isFirstRun = False
+			
+		self.currentServer = self.servers[num]
+		self.currentServer.isCurrentServer = True
+		
+		if self.currentServer.isOnline == True:
+			for key, client in self.currentServer.clients.items():
+				client.clientFrame = self.app.ui.createClientFrame(client, len(self.currentServer.clients))
+			for message in self.currentServer.log:
+				self.app.ui.displayMessage(message, self.currentServer.clients[message.sender].name)
+			self.app.ui.serverNameLabel.configure(text=self.currentServer.name)
+			self.app.ui.chatboxInput.configure(state='normal')
+			self.app.ui.sendButton.configure(state='normal')
+			
+	def addServer(self, IP, Port):
+		check = self.checkAddress(IP, Port)
+		if check == True:
+			newServer = Server(self.app, IP, int(Port), self.count)
+			if newServer not in self.servers:
+				try:
+					newServer.button = self.app.ui.createServerButton(newServer.num, "Connecting...")
+					self.servers.append(newServer)
+					self.count += 1
+					Thread(target=newServer.connect, daemon=True).start()
+				except:
+					print("Error")
+			else:
+				self.app.ui.displayError("Error", "Server Already Added!")
+		else:
+			self.app.ui.displayError("Error", check)
+			
+	def removeServer(self, num):
+		self.servers.replace(self.servers[num], None)

@@ -7,22 +7,22 @@ from rsa import RSA
 from classes import Client
 
 class Main():
-    def __init__(self):
-        clientRefID = str(random.randint(1000, 9999))
-        clientName = str(input("Choose a Username: "))
-        self.appClient  = Client(clientRefID, clientName)
-        self.appUI      = Interface(self)
-        self.appHandler = ServerHandler(self)
-        self.appAES     = AES()
-        self.appRSA     = RSA()
+	def __init__(self):
+		refID        = str(random.randint(1000, 9999))
+		name         = str(input("Choose a Username: "))
+		self.client	 = Client(refID, name)
+		self.ui		 = Interface(self)
+		self.handler = ServerHandler(self)
+		self.aes	 = AES()
+		self.rsa	 = RSA()
 
-    def Start(self):
-        self.clientKeyPublic, self.clientKeyPrivate = self.appRSA.KeyGen()
-        self.appUI.GenerateInterface()
-        self.appHandler.LoadServers()
-        self.appUI.Master.mainloop()
-        self.appHandler.SaveServers()
-        sys.exit()
-        
-App = Main()
-App.Start()
+	def Start(self):
+		self.keyPublicClient, self.keyPrivateClient = self.rsa.KeyGen()
+		self.ui.generateInterface()
+		self.handler.loadServers()
+		self.ui.root.mainloop()
+		self.handler.saveServers()
+		sys.exit()
+		
+app = Main()
+app.Start()

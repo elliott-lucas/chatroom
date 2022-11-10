@@ -6,154 +6,142 @@ from threading import Thread
 from rsa import RSA
 
 class Server():
-    def __init__(self, serverIP, serverPort, serverName="Server"):
-        self.serverIP           = serverIP
-        self.serverPort         = serverPort
-        self.serverName         = serverName
-        self.serverClients      = {}
-        self.serverMessageLog   = []
-        self.serverMessageQueue = []
-        self.serverRSA          = RSA()
-        self.serverMaxBytes     = 8192
-        self.serverIsOnline     = False
-        self.serverKeyPublic    = None
-        self.serverKeyPrivate   = None
+	def __init__(self, ip, port, name="Server"):
+		self.ip         = ip
+		self.port       = port
+		self.name       = name
+		self.clients    = {}
+		self.queue      = []
+		self.rsa		= RSA()
+		self.maxBytes	= 8192
+		self.keyPublic	= None
+		self.keyPrivate	= None
+		self.isOnline	= False
 
-    def Start(self):
-        h = "Startup"
-        self.Output(h, "Generating Public/Private Key")
-        self.serverKeyPublic, self.serverKeyPrivate = self.serverRSA.KeyGen()
-        self.Output(h, "Server Public Key  : %s" % self.serverKeyPublic)
-        self.Output(h, "Server Private Key : %s" % self.serverKeyPrivate)
-        self.Output(h, "Starting Server with IP %s on Port %s" % (self.serverIP, self.serverPort))
-        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.Output(h, "Building Socket")
-        self.serverSocket.bind((self.serverIP, self.serverPort))
-        self.Output(h, "Binding IP and Port")
-        self.serverSocket.listen(16)
-        self.serverIsOnline = True
-        self.Output(h, "Server Initialised.")
-        Thread(target=self.ConnectHandler).start()
-        Thread(target=self.SendHandler).start()
-        
-        
-    def Handshake(self, clientNew):
-        h = "Handshaker"
-        self.Send(Message("H", "SERV", "NEWC", "\n".join([self.serverKeyPublic, self.serverName]), False))
-        self.Output(h, "Waiting for Public Key from Client")
-        while clientNew.clientKeyPublic == None:
-            pass
-        while clientNew.clientName == "Username":
-            pass
-        self.Output(h, "Handshake Complete")
-        self.Output(h, "Client Public Key: %s" % clientNew.clientKeyPublic)
-        self.Output(h, "Client Name: %s" % clientNew.clientName)
+	def start(self):
+		h = "Startup"
+		self.output(h, "Generating Public/Private Key")
+		self.keyPublic, self.keyPrivate = self.rsa.keyGen()
+		
+		self.output(h, "Server Public Key  : %s" % self.keyPublic)
+		self.output(h, "Server Private Key : %s" % self.keyPrivate)
+		self.output(h, "Starting Server with IP %s on Port %s" % (self.ip, self.port))
+		
+		self.output(h, "Building Socket")
+		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		
+		self.output(h, "Binding IP and Port")
+		self.socket.bind((self.ip, self.port))
+		
+		self.socket.listen(16)
+		self.isOnline = True
+		
+		Thread(target=self.handlerConnect).start()
+		Thread(target=self.handlerSend).start()
+		
+		self.output(h, "Server Initialised.")
+		
+	def handshake(self, c):
+		h = "Handshaker"
+		self.send(Message("H", "SERV", "NEWC", "\n".join([self.keyPublic, self.name]), False))
+		self.output(h, "Waiting for Public Key from Client")
+		while c.keyPublic == None:
+			pass
+		while c.name == "Username":
+			pass
+		self.output(h, "Handshake Complete")
+		self.output(h, "Client Public Key: %s" % c.keyPublic)
+		self.output(h, "Client Name: %s" % c.name)
+		
+	def handlerConnect(self):
+		h = "Connection"
+		while self.isOnline == True:
+			self.output(h, "Waiting for Client Connection")
+			connection, address = self.socket.accept()
+			self.output(h, "New Client Accepted from %s" % str(address[0]))
+			c = Client("NEWC", connection, address, self)
+			self.clients["NEWC"] = c
+			Thread(target=self.handlerClient, args=(c, )).start()
+			self.handshake(c)
+			self.clients[c.refID] = c
+			self.clients.pop("NEWC")
+			self.send(Message("C", "SERV", "ALLC", "+%s%s" % (c.refID, c.name), True))
+			self.output(h, "Client %s Added Successfully" % c.refID)
+			for key, client in self.clients.items():
+				if client.refID != c.refID:
+					self.send(Message("C", "SERV", c.refID, "+%s%s" % (client.refID, client.name), True))
+					
+	def handlerSend(self):
+		h = "Sender"
+		while self.isOnline == True:
+			if len(self.queue) > 0:
+				m = self.queue.pop(0)
+				self.output(h, "Sending Message: %s" % m.data)
+				if m.recipient == "ALLC":
+					recipients = list(self.clients.values())
+				else:
+					recipients = [self.clients[m.recipient]]
+				for client in recipients:
+					try:
+						encrypted = self.encrypt(m, (m.encrypt, client.keyPublic))
+						client.connection.send(encrypted)
+						self.output(h, "Message Sent to %s" % client.refID)
+					except ConnectionResetError:
+						self.output(h, "Error - %s is No Longer Connected." % client.refID)
+						
+	def handlerClient(self, client):
+		h = "Client Handler (%s)" % client.refID
+		self.output(h, "Client Thread Started for Client %s" % client.refID)
+		client.isOnline = True
+		while self.isOnline == True and client.isOnline == True:
+			try:
+				encrypted = client.connection.recv(self.maxBytes)
+				m = self.decrypt(encrypted, (True, self.keyPrivate))
+				if m.mode == "H": #Handshake
+					if client.keyPublic == None:
+						client.keyPublic, client.refID = m.data, m.sender
+					else:
+						client.name = m.data
 
-    def ConnectHandler(self):
-        h = "Connection"
-        while self.serverIsOnline == True:
-            self.Output(h, "Waiting for Client Connection")
-            clientConnection, clientAddress = self.serverSocket.accept()
-            self.Output(h, "New Client Accepted from %s" % str(clientAddress[0]))
-            clientNew = Client("NEWC", clientConnection, clientAddress, self)
-            self.serverClients["NEWC"] = clientNew
-            Thread(target=self.ClientHandler, args=(clientNew, )).start()
-            self.Handshake(clientNew)
-            self.serverClients[clientNew.clientRefID] = clientNew
-            self.serverClients.pop("NEWC")
-            self.Send(Message("C", "SERV", "ALLC", "+%s%s" % (clientNew.clientRefID, clientNew.clientName), True))
-            self.Output(h, "Client %s Added Successfully" % clientNew.clientRefID)
-            for key, client in self.serverClients.items():
-                print(client.clientRefID)
-                if client.clientRefID != clientNew.clientRefID:
-                    self.Send(Message("C", "SERV", clientNew.clientRefID, "+%s%s" % (client.clientRefID,
-                                                                                         client.clientName), True))
-            
-    def SendHandler(self):
-        h = "Sender"
-        while self.serverIsOnline == True:
-            if len(self.serverMessageQueue) > 0:
-                serverMessageCache = self.serverMessageQueue.pop(0)
-                print(serverMessageCache)
-                self.Output(h, "Sending Message: %s" % serverMessageCache.messageData)
-                if serverMessageCache.messageRecipient == "ALLC":
-                    messageRecipients = list(self.serverClients.values())
-                else:
-                    messageRecipients = [self.serverClients[serverMessageCache.messageRecipient]]
-                for client in messageRecipients:
-                    try:
-                        print("MESSAGE: %s" % serverMessageCache.messageData)
-                        messageEncrypted = self.Encrypt(serverMessageCache,
-                                                        (serverMessageCache.messageEncrypt, client.clientKeyPublic))
-                        client.clientConnection.send(messageEncrypted)
-                        self.Output(h, "Message Sent to %s" % client.clientRefID)
-                    except ConnectionResetError:
-                        self.Output(h, "Error - %s is No Longer Connected." % client.clientRefID)
+				elif m.mode == "M": #Message
+					if m.recipient == "ALLC":
+						for key in self.clients:
+							self.send(Message("M", m.sender, key, m.data, True))
+					else:
+						self.send(m)
 
-    def ClientHandler(self, client):
-        h = "Client Handler (%s)" % client.clientRefID
-        self.Output(h, "Client Thread Started for Client %s" % client.clientRefID)
-        clientIsOnline = True
-        while self.serverIsOnline == True and clientIsOnline == True:
-            try:
-                messageEncrypted = client.clientConnection.recv(self.serverMaxBytes)
-                messageObject    = self.Decrypt(messageEncrypted, (True, self.serverKeyPrivate))
+				elif m.mode == "C": #Client Connect/Disconnect
+					for key in self.clients:
+						self.send(Message("C", m.sender, key, m.data))
 
-                if messageObject.messageType   == "H": #Handshake
-                    if client.clientKeyPublic == None:
-                        client.clientKeyPublic, client.clientRefID = messageObject.messageData, messageObject.messageSender
-                    else:
-                        client.clientName = messageObject.messageData
+				elif m.mode == "P": #Ping Request
+					self.send(Message("P", "SERV", m.sender, m.data, True))
 
-                elif messageObject.messageType == "M": #Message
-                    if messageObject.messageRecipient == "ALLC":
-                        for key in self.serverClients:
-                            self.Send(Message("M", messageObject.messageSender,
-                                              key, messageObject.messageData, True))
-                    else:
-                        self.Send(messageObject)
+				elif m.mode == "T": #Client is Typing
+					#Notify all clients that this client is typing
+					pass
+			except ConnectionResetError:
+				self.output(h, "Client Disconnected, Closing Thread.")
+				self.send(Message("C", "SERV", "ALLC", "-%s" % client.refID, True))
+				self.clients.pop(client.refID)
+				client.isOnline = False
+				
+	def encrypt(self, m, RSA):
+		m = m.construct()
+		if RSA[0] == True:
+			m = self.rsa.encrypt(m, RSA[1])
+		m += "|"
+		return m.encode()
+		
+	def decrypt(self, m, RSA):
+		m = m.decode()
+		if RSA[0] == True:
+			m = self.rsa.decrypt(m, RSA[1])
+		return Message(m[0], m[1:5], m[5:9], m[9:], True)
+		
+	def send(self, m):
+		self.queue.append(m)
+		
+	def output(self, handler, message):
+		print("[%s]: %s" % (handler, message))
 
-                elif messageObject.messageType == "C": #Client Connect/Disconnect
-                    for key in self.serverClients:
-                        self.Send(Message("C", messageObject.messageSender,
-                                          key, messageObject.messageData))
-
-                elif messageObject.messageType == "P": #Ping Request
-                    self.Send(Message("P", "SERV", messageObject.messageSender,
-                                      messageObject.messageData, True))
-                    pass
-
-                elif messageObject.messageType == "T": #Client is Typing
-                    #Notify all clients that this client is typing
-                    pass
-            except ConnectionResetError:
-                self.Output(h, "Client Disconnected, Closing Thread.")
-                self.Send(Message("C", "SERV", "ALLC", "-%s" % client.clientRefID, True))
-                self.serverClients.pop(client.clientRefID)
-                clientIsOnline = False
-                
-    def Encrypt(self, messageObject, RSA):
-        messageText = messageObject.Construct()
-        if RSA[0] == True:
-            messageText = self.serverRSA.Encrypt(messageText, RSA[1])
-        messageText += "|"
-        messageText = messageText.encode()
-        return messageText
-
-    def Decrypt(self, messageText, RSA):
-        messageText = messageText.decode()
-        if RSA[0] == True:
-            messageText = self.serverRSA.Decrypt(messageText, RSA[1])
-        messageObject = Message(messageText[0], messageText[1:5], messageText[5:9], messageText[9:], True)
-        return messageObject
-    
-    def Send(self, messageObject):
-        self.serverMessageQueue.append(messageObject)
-
-    def Output(self, handler, message):
-        print("[%s]: %s" % (handler, message))
-        pass
-        
-    
-        
-        

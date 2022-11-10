@@ -1,20 +1,19 @@
 class Message():
-    def __init__(self, messageType, messageSender, messageRecipient, messageData, messageEncrypt):
-        self.messageType      = messageType
-        self.messageSender    = messageSender
-        self.messageRecipient = messageRecipient
-        self.messageData      = messageData
-        self.messageUsername  = "Username"
-        self.messageEncrypt   = messageEncrypt
-    def Construct(self):
-        message = "".join([self.messageType,self.messageSender,self.messageRecipient,self.messageData])
-        return message
-
+	def __init__(self, mode, sender, recipient, data, encrypt):
+		self.mode      = mode
+		self.sender    = sender
+		self.recipient = recipient
+		self.data      = data
+		self.username  = "Username"
+		self.encrypt   = encrypt
+	def Construct(self):
+		return "".join([self.mode, self.sender, self.recipient, self.data])
+		
 class Client():
-    def __init__(self, clientRefID, clientName="Username"):
-        self.clientName  = clientName
-        self.clientRefID = clientRefID
-    def __repr__(self):
-        return ("[%s/%s]" % (self.clientRefID, self.clientName))
-    def __eq__(self, other):
-        return self.clientRefID == other.clientRefID
+	def __init__(self, refID, name="Username"):
+		self.name  = name
+		self.refID = refID
+	def __repr__(self):
+		return ("[%s/%s]" % (self.refID, self.name))
+	def __eq__(self, other):
+		return self.refID == other.refID
